@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -9,7 +10,7 @@ import subprocess
 import sys
 
 
-def check_setup(repo_root):
+def check_setup(repo_root, *, tools=True):
     """Return the Arena section using the existing pai.config loader."""
     repo_root = Path(repo_root).resolve()
     errors = []
@@ -19,7 +20,7 @@ def check_setup(repo_root):
         if not passed:
             errors.append(label)
 
-    tools = {
+    commands = {
         "Python 3.11": ["python3.11", "--version"],
         "Git": ["git", "--version"],
         "Git LFS": ["git", "lfs", "version"],
@@ -27,7 +28,7 @@ def check_setup(repo_root):
         "Terraform": ["terraform", "version", "-json"],
         "Bash": ["bash", "--version"],
     }
-    for label, command in tools.items():
+    for label, command in commands.items() if tools else []:
         if not shutil.which(command[0]):
             check(label, False, "not installed or not on PATH")
             continue
@@ -106,9 +107,12 @@ def check_setup(repo_root):
     recording = run.get("record_video")
     check("arena.run.record_video", recording == "auto" or type(recording) is bool,
           'use "auto", true or false')
-    free_gib = shutil.disk_usage(repo_root).free / 1024**3
-    check("Notebook client evidence storage", free_gib >= 40,
-          f"{free_gib:.1f} GiB free; plan for at least 40 GiB")
+    state = Path(os.environ.get("VLA_STATE_DIR", str(Path.home() / ".local/state/vla"))).expanduser()
+    for label, path in (("Clone and client tools", repo_root), ("Operation records and evidence", state)):
+        existing = next(p for p in (path, *path.parents) if p.exists())
+        free_gib = shutil.disk_usage(existing).free / 1024**3
+        check(label, free_gib >= 40,
+              f"{path}: {free_gib:.1f} GiB free; requires at least 40 GiB")
     if errors:
         raise RuntimeError(
             "Fix the failed tools/settings before proceeding: " + ", ".join(errors)

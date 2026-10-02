@@ -34,11 +34,7 @@
     "region": "us-east-1",
     "deployment_name": "arena-notebook",
     "prepare_cells": [
-      "gr00t-n16-arena",
-      "gr00t-n17-arena",
-      "gr00t-n17-libero",
-      "molmoact2-libero",
-      "openvla-libero"
+      "gr00t-n16-arena"
     ],
     "local": {
       "cell": "gr00t-n16-arena",
@@ -46,8 +42,8 @@
     },
     "managed": {
       "cell": "gr00t-n16-arena",
-      "train_instance_type": "ml.g6e.12xlarge",
-      "eval_instance_type": "ml.g6e.12xlarge"
+      "train_instance_type": "ml.g6e.8xlarge",
+      "eval_instance_type": "ml.g6e.8xlarge"
     },
     "run": {
       "max_runtime_seconds": 21600,

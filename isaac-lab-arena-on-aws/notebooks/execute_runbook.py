@@ -68,7 +68,7 @@ class SavingClient(NotebookClient):
                 self.save_progress()
 
 
-async def execute(path):
+async def execute(path, kernel_name=None):
     path = path.resolve()
     notebook = nbformat.read(path, as_version=4)
     output = path.parent.parent / "local-dev/notebook-executions" / (
@@ -88,7 +88,8 @@ async def execute(path):
         "events": str(output / "events.jsonl"),
     }
     client = SavingClient(
-        notebook, path, output / "events.jsonl", timeout=None, kernel_name="python3",
+        notebook, path, output / "events.jsonl", timeout=None,
+        kernel_name=kernel_name or notebook.metadata.get("kernelspec", {}).get("name", "python3"),
         resources={"metadata": {"path": str(path.parent)}},
     )
     client.event("started", notebook=str(path))
@@ -125,8 +126,9 @@ async def execute(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("notebook", nargs="?", type=Path, default=Path(__file__).with_name("runbook.ipynb"))
+    parser.add_argument("--kernel", help="Use an installed Jupyter kernel instead of the notebook's default.")
     args = parser.parse_args()
-    asyncio.run(execute(args.notebook))
+    asyncio.run(execute(args.notebook, args.kernel))
 
 
 if __name__ == "__main__":

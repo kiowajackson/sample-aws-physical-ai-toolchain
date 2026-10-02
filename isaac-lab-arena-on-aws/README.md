@@ -15,8 +15,19 @@ OpenVLA and MolmoAct2 with LIBERO.
 section of [`config.json` at the repository root](../config.json), then run its
 cells from setup through teardown. It uses the same `pai arena` commands shown
 below and displays the actual results and, for Arena, the run's recorded video.
-Training and evaluation run in AWS; the notebook can run on your computer or a
-notebook instance.
+Use a CPU SageMaker AI notebook instance (`notebook-al2023-v1`, `ml.t3.xlarge`,
+150 GiB volume) so the client tools and retained evidence stay in AWS. Clone
+onto its data volume, configure the account and token-file paths, and choose
+Run All. The notebook installs missing client tools without sudo and creates
+its virtual environment. Training and evaluation run on the separate GPU EC2
+host and SageMaker jobs. The supplied notebook remains available for viewing
+results after application teardown; stop that notebook instance when finished.
+
+The bootstrap supports Linux x86_64. A Studio JupyterLab environment can use the
+same setup, but acceptance records name the exact environment actually tested.
+Other clients can run the notebook with the documented tools already installed.
+The committed notebook has no saved execution outputs; see the run's executed
+copy before claiming an end-to-end pass.
 
 - [Pipeline overview](#pipeline-overview)
 - [1. Setting up and running](#1-setting-up-and-running)
