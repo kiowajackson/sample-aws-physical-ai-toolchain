@@ -443,6 +443,23 @@ def allow_owned_repository_deletion(env, owned):
         r["attributes"]["name"] for r in repositories), flush=True)
 
 
+def wait_for_secret_absence(client, secret_arn, *, timeout=300):
+    """Wait for an owned secret's accepted deletion to become observable."""
+    deadline = time.monotonic() + timeout
+    while True:
+        secret = absent(client.describe_secret, {"SecretId": secret_arn},
+                        {"ResourceNotFoundException"})
+        if secret is None:
+            return
+        if not secret.get("DeletedDate"):
+            raise ValueError("Owned token secret is not marked for deletion: " + secret_arn)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("Owned token secret deletion is not yet complete: " + secret_arn)
+        print("Waiting for confirmed secret deletion:", secret_arn, flush=True)
+        time.sleep(min(5, remaining))
+
+
 def verify_absence(env):
     owned = load(env.root / "teardown/ownership.json")
     remaining = support.terraform_inventory(env.states)
@@ -492,9 +509,7 @@ def verify_absence(env):
             raise ValueError("Owned Elastic IP remains")
         checked["elastic_ips"].append(r["id"])
     for r in resources(owned, "aws_secretsmanager_secret"):
-        if absent(env.client("secretsmanager").describe_secret, {"SecretId": r["arn"]},
-                  {"ResourceNotFoundException"}) is not None:
-            raise ValueError("Owned token secret remains; allow AWS deletion to finish and retry")
+        wait_for_secret_absence(env.client("secretsmanager"), r["arn"])
         checked["secrets"].append(r["name"])
     path = env.root / "teardown/build-log-groups.json"
     if path.exists():

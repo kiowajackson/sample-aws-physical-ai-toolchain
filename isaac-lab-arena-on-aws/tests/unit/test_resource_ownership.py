@@ -1,13 +1,18 @@
 """Resource cleanup must reject changes beyond the captured ownership and archive."""
 from copy import deepcopy
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import boto3
+from botocore.exceptions import ClientError
 from botocore.stub import Stubber
 import pytest
 
 from vla_pipeline.resources.environment import support
-from vla_pipeline.resources.environment_cleanup import allow_owned_repository_deletion
+from vla_pipeline.resources import environment_cleanup
+from vla_pipeline.resources.environment_cleanup import (
+    allow_owned_repository_deletion, wait_for_secret_absence,
+)
 
 
 def test_destroy_plan_accepts_only_the_recorded_resource_id():
@@ -78,4 +83,47 @@ def test_repository_protection_is_removed_only_for_new_empty_owned_repos(
             with pytest.raises(ValueError):
                 allow_owned_repository_deletion(env, owned)
             assert not override.exists()
+        stub.assert_no_pending_responses()
+
+
+@pytest.mark.parametrize("case", ["already_absent", "eventually_absent", "timeout", "not_deleted", "forbidden"])
+def test_secret_teardown_requires_confirmed_absence(monkeypatch, case):
+    client = boto3.client("secretsmanager", region_name="us-east-1",
+                          aws_access_key_id="test", aws_secret_access_key="test")
+    arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:owned-abcdef"
+    request = {"SecretId": arn}
+    elapsed = [0]
+    sleeps = []
+
+    def sleep(seconds):
+        sleeps.append(seconds)
+        elapsed[0] += seconds
+
+    monkeypatch.setattr(environment_cleanup, "time",
+                        SimpleNamespace(monotonic=lambda: elapsed[0], sleep=sleep))
+    deleting = {"ARN": arn, "DeletedDate": datetime(2026, 10, 2, tzinfo=timezone.utc)}
+    with Stubber(client) as stub:
+        if case in {"eventually_absent", "timeout"}:
+            stub.add_response("describe_secret", deleting, request)
+        if case in {"already_absent", "eventually_absent"}:
+            stub.add_client_error("describe_secret", service_error_code="ResourceNotFoundException",
+                                  expected_params=request)
+            wait_for_secret_absence(client, arn, timeout=5)
+            assert sleeps == ([5] if case == "eventually_absent" else [])
+        elif case == "timeout":
+            stub.add_response("describe_secret", deleting, request)
+            with pytest.raises(TimeoutError, match="not yet complete"):
+                wait_for_secret_absence(client, arn, timeout=5)
+            assert sleeps == [5]
+        elif case == "not_deleted":
+            stub.add_response("describe_secret", {"ARN": arn}, request)
+            with pytest.raises(ValueError, match="not marked for deletion"):
+                wait_for_secret_absence(client, arn, timeout=5)
+            assert not sleeps
+        else:
+            stub.add_client_error("describe_secret", service_error_code="AccessDeniedException",
+                                  expected_params=request)
+            with pytest.raises(ClientError, match="AccessDeniedException"):
+                wait_for_secret_absence(client, arn, timeout=5)
+            assert not sleeps
         stub.assert_no_pending_responses()
